@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProgVendas - Sistema de Vendas</title>
+</head>
+<body>
+    <h1>Bem-vindo ao ProgVendas</h1>
+    
+    <h2>Adicionar Produto</h2>
+    <form id="add-product-form">
+        <input type="text" id="nome" placeholder="Nome do Produto" required>
+        <input type="number" id="preco" placeholder="Preço" required>
+        <input type="number" id="quantidade" placeholder="Quantidade" required>
+        <button type="submit">Adicionar Produto</button>
+    </form>
+
+    <h2>Vender Produto</h2>
+    <form id="sell-product-form">
+        <input type="number" id="produto-id" placeholder="ID do Produto" required>
+        <input type="number" id="quantidade-vendida" placeholder="Quantidade" required>
+        <button type="submit">Vender Produto</button>
+    </form>
+    <h2>Relatório de Vendas</h2>
+        <button id="generate-report">Gerar Balancete</button>
+    <ul id="report-list"></ul>
+    <h2>Alterar Produto</h2>
+    <form id="alter-product-form">
+        <input type="number" id="alter-produto-id" placeholder="ID do Produto" required>
+        <input type="text" id="alter-nome" placeholder="Novo Nome">
+        <input type="number" id="alter-preco" placeholder="Novo Preço">
+        <input type="number" id="alter-quantidade" placeholder="Nova Quantidade">
+        <button type="submit">Alterar Produto</button>
+    </form>
+    <h2>Substituir Produto</h2>
+    <form id="substitute-product-form">
+        <input type="number" id="substitute-produto-id" placeholder="ID do Produto" required>
+        <input type="text" id="substitute-nome" placeholder="Novo Nome" required>
+        <button type="submit">Substituir Produto</button>
+    </form>
+    <h2>Balancete Financeiro</h2>
+        <button id="generate-financial-report">Gerar Balancete Financeiro</button>
+    <div id="financial-report"></div>
+
+    
+
+
+    <h2>Produtos em Estoque</h2>
+    <ul id="produtos-list"></ul>
+    <script>
+        // Função para carregar os produtos do servidor
+        async function loadProducts() {
+            const response = await fetch('/produtos');
+            const products = await response.json();
+            const productList = document.getElementById('produtos-list');
+            productList.innerHTML = '';
+    
+            products.forEach(product => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `${product.nome} - R$ ${product.preco} - Estoque: ${product.quantidade}`;
+                productList.appendChild(listItem);
+            });
+        }
+    
+        // Função para adicionar um produto
+        document.getElementById('add-product-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+    
+            const nome = document.getElementById('nome').value;
+            const preco = document.getElementById('preco').value;
+            const quantidade = document.getElementById('quantidade').value;
+    
+            const response = await fetch('/produtos', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ nome, preco, quantidade })
+            });
+    
+            if (response.ok) {
+                loadProducts(); // Recarrega a lista de produtos
+                alert('Produto adicionado com sucesso!');
+            }
+        });
+    
+        // Função para vender um produto
+document.getElementById('sell-product-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const produtoId = document.getElementById('produto-id').value;
+    const quantidadeVendida = document.getElementById('quantidade-vendida').value;
+
+    const response = await fetch('/vender', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ produto_id: produtoId, quantidade_vendida: quantidadeVendida })
+    });
+
+    if (response.ok) {
+        loadProducts(); // Recarrega a lista de produtos
+        alert('Produto vendido com sucesso!');
+    } else {
+        const error = await response.json();
+        alert('Erro: ' + error.message);
+    }
+});
+
+// Função para alterar produto
+document.getElementById('alter-product-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const produtoId = document.getElementById('alter-produto-id').value;
+    const novoNome = document.getElementById('alter-nome').value;
+    const novoPreco = document.getElementById('alter-preco').value;
+    const novaQuantidade = document.getElementById('alter-quantidade').value;
+
+    const data = {};
+    if (novoNome) data.nome = novoNome;
+    if (novoPreco) data.preco = parseFloat(novoPreco);
+    if (novaQuantidade) data.quantidade = parseInt(novaQuantidade);
+
+    const response = await fetch(`/produto/${produtoId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (response.ok) {
+        loadProducts();
+        alert('Produto alterado com sucesso!');
+    } else {
+        const error = await response.json();
+        alert('Erro: ' + error.message);
+    }
+});
+
+// Função para gerar o balancete financeiro
+document.getElementById('generate-financial-report').addEventListener('click', async () => {
+    const response = await fetch('/balancete');
+    const report = await response.json();
+    
+    const reportDiv = document.getElementById('financial-report');
+    reportDiv.innerHTML = `
+        <p>Total de Vendas: R$ ${report.total_vendas}</p>
+        <p>Total de Itens Vendidos: ${report.total_itens_vendidos}</p>
+        <p>Número de Vendas Realizadas: ${report.num_vendas}</p>
+    `;
+});
+
+
+// Função para substituir produto (alterar apenas o nome)
+document.getElementById('substitute-product-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const produtoId = document.getElementById('substitute-produto-id').value;
+    const novoNome = document.getElementById('substitute-nome').value;
+
+    const response = await fetch(`/substituir/${produtoId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ nome: novoNome })
+    });
+
+    if (response.ok) {
+        loadProducts();
+        alert('Produto substituído com sucesso!');
+    } else {
+        const error = await response.json();
+        alert('Erro: ' + error.message);
+    }
+});
+
+
+        // Função para gerar relatório de vendas
+        document.getElementById('generate-report').addEventListener('click', async () => {
+            const response = await fetch('/relatorio-vendas');
+            const report = await response.json();
+            const reportList = document.getElementById('report-list');
+            reportList.innerHTML = '';
+    
+            report.forEach(item => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `Produto: ${item.nome}, Quantidade: ${item.quantidade}, Total: R$ ${item.total}`;
+                reportList.appendChild(listItem);
+            });
+        });
+    
+        // Carregar produtos ao abrir a página
+        loadProducts();
+    </script>
+    
+</body>
+</html>
