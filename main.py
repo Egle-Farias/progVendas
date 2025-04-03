@@ -1,18 +1,17 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, Response
 from flask_sqlalchemy import SQLAlchemy
-from flask_cors import CORS
-from flask import render_template
-from sqlalchemy import Integer
-
-
+from datetime import datetime
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from io import BytesIO
 
 app = Flask(__name__)
-CORS(app)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///progvendas.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///banco.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
 
-# Modelo de Produto
+# Definição dos modelos do banco
 class Produto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
@@ -22,20 +21,17 @@ class Produto(db.Model):
 class Venda(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     produto_id = db.Column(db.Integer, db.ForeignKey('produto.id'), nullable=False)
-    quantidade = db.Column(db.Integer, nullable=False)
-    preco_unitario = db.Column(db.Float, nullable=False)
-    total = db.Column(db.Float, nullable=False)
     produto = db.relationship('Produto', backref=db.backref('vendas', lazy=True))
+    quantidade = db.Column(db.Integer, nullable=False)
+    total = db.Column(db.Float, nullable=False)
+    data = db.Column(db.DateTime, default=datetime.utcnow)
 
-
-# Criar banco de dados
 with app.app_context():
     db.create_all()
 
 @app.route('/')
 def index():
     return render_template('index.html')
-
 
 # Adicionar produto
 @app.route('/produtos', methods=['POST'])
@@ -50,45 +46,36 @@ def adicionar_produto():
 @app.route('/produtos', methods=['GET'])
 def listar_produtos():
     produtos = Produto.query.all()
-    return jsonify([{ "id": p.id, "nome": p.nome, "preco": p.preco, "quantidade": p.quantidade } for p in produtos])
+    return jsonify([{"id": p.id, "nome": p.nome, "preco": p.preco, "quantidade": p.quantidade} for p in produtos])
 
 # Vender produto
 @app.route('/vender', methods=['POST'])
 def vender_produto():
-    dados = request.get_json()  # Obtém os dados enviados pelo frontend
-    
+    dados = request.get_json()
     produto_id = dados.get('produto_id')
-    quantidade_vendida = dados.get('quantidade_vendida')  # Pega o valor da quantidade vendida
-    
-    print(f"Produto ID: {produto_id}, Quantidade Vendida: {quantidade_vendida}")  # Adiciona o log
-    
-    # Verifica se a quantidade vendida foi fornecida e se é um número válido
+    quantidade_vendida = dados.get('quantidade_vendida')
+
     if quantidade_vendida is None:
-        return jsonify({"message": "A quantidade vendida não foi fornecida."}), 400
-    
+        return jsonify({"mensagem": "A quantidade vendida não foi fornecida."}), 400
+
     try:
-        quantidade_vendida = int(quantidade_vendida)  # Converte para inteiro
+        quantidade_vendida = int(quantidade_vendida)
     except ValueError:
-        return jsonify({"message": "A quantidade vendida deve ser um número válido."}), 400
-    
-    # Verifica se o produto existe
+        return jsonify({"mensagem": "A quantidade vendida deve ser um número válido."}), 400
+
     produto = Produto.query.get(produto_id)
     if not produto:
-        return jsonify({"message": "Produto não encontrado."}), 400
-    
-    print(f"Produto encontrado: {produto.nome}, Quantidade em estoque: {produto.quantidade}")  # Log de produto encontrado
-    
-    # Verifica se a quantidade do produto é válida (não None)
-    if produto.quantidade is None:
-        return jsonify({"message": "Quantidade do produto não encontrada."}), 400
-    
-    # Verifica se a quantidade disponível é suficiente
+        return jsonify({"mensagem": "Produto não encontrado."}), 400
+
     if produto.quantidade >= quantidade_vendida:
         produto.quantidade -= quantidade_vendida
+        total_venda = quantidade_vendida * produto.preco
+        nova_venda = Venda(produto_id=produto.id, quantidade=quantidade_vendida, total=total_venda)
+        db.session.add(nova_venda)
         db.session.commit()
-        return jsonify({"message": "Venda realizada com sucesso!"}), 200
+        return jsonify({"mensagem": "Venda realizada com sucesso!"}), 200
     else:
-        return jsonify({"message": "Quantidade insuficiente ou produto não encontrado."}), 400
+        return jsonify({"mensagem": "Quantidade insuficiente ou produto não encontrado."}), 400
 
 # Alterar produto
 @app.route('/produto/<int:produto_id>', methods=['PUT'])
@@ -96,13 +83,13 @@ def alterar_produto(produto_id):
     dados = request.get_json()
     produto = Produto.query.get(produto_id)
     if not produto:
-        return jsonify({"message": "Produto não encontrado."}), 404
-    
+        return jsonify({"mensagem": "Produto não encontrado."}), 404
+
     produto.nome = dados.get('nome', produto.nome)
     produto.preco = dados.get('preco', produto.preco)
     produto.quantidade = dados.get('quantidade', produto.quantidade)
     db.session.commit()
-    return jsonify({"message": "Produto atualizado com sucesso!"}), 200
+    return jsonify({"mensagem": "Produto atualizado com sucesso!"}), 200
 
 # Substituir produto
 @app.route('/substituir/<int:produto_id>', methods=['PUT'])
@@ -110,18 +97,17 @@ def substituir_produto(produto_id):
     dados = request.get_json()
     produto = Produto.query.get(produto_id)
     if not produto:
-        return jsonify({"message": "Produto não encontrado."}), 404
+        return jsonify({"mensagem": "Produto não encontrado."}), 404
 
-    # Exemplo: vamos permitir a substituição apenas do nome
     novo_nome = dados.get('nome')
     if not novo_nome:
-        return jsonify({"message": "Novo nome não fornecido."}), 400
+        return jsonify({"mensagem": "Novo nome não fornecido."}), 400
 
     produto.nome = novo_nome
     db.session.commit()
-    return jsonify({"message": "Produto substituído com sucesso!"}), 200
+    return jsonify({"mensagem": "Produto substituído com sucesso!"}), 200
 
-# Gerar relatório de estoque
+# Gerar relatório de vendas
 @app.route('/relatorio-vendas', methods=['GET'])
 def relatorio_vendas():
     vendas = Venda.query.all()
@@ -131,17 +117,49 @@ def relatorio_vendas():
         'total': venda.total
     } for venda in vendas])
 
+# Gerar balancete
 @app.route('/balancete', methods=['GET'])
 def balancete():
-    vendas = Venda.query.all()
+    data_inicio = request.args.get('data_inicio')
+    data_fim = request.args.get('data_fim')
+
+    if data_inicio and data_fim:
+        data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d')
+        data_fim = datetime.strptime(data_fim, '%Y-%m-%d')
+        vendas = Venda.query.filter(Venda.data.between(data_inicio, data_fim)).all()
+    else:
+        vendas = Venda.query.all()
+
     total_vendas = sum(venda.total for venda in vendas)
     total_itens_vendidos = sum(venda.quantidade for venda in vendas)
+
     return jsonify({
         'total_vendas': total_vendas,
         'total_itens_vendidos': total_itens_vendidos,
         'num_vendas': len(vendas)
     })
 
+
+# Gerar relatório PDF
+@app.route('/relatorio-pdf', methods=['GET'])
+def relatorio_pdf():
+    vendas = Venda.query.all()
+    total_vendas = sum(venda.total for venda in vendas)
+    total_itens_vendidos = sum(venda.quantidade for venda in vendas)
+
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+    pdf.setFont("Helvetica", 14)
+
+    pdf.drawString(100, 750, "Relatório Financeiro - ProgVendas")
+    pdf.drawString(100, 720, f"Total de Vendas: R$ {total_vendas}")
+    pdf.drawString(100, 700, f"Total de Itens Vendidos: {total_itens_vendidos}")
+    pdf.drawString(100, 680, f"Número de Vendas: {len(vendas)}")
+
+    pdf.save()
+    buffer.seek(0)
+
+    return Response(buffer, mimetype='application/pdf', headers={"Content-Disposition": "attachment;filename=relatorio.pdf"})
 
 if __name__ == '__main__':
     app.run(debug=True)
