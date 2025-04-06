@@ -4,8 +4,15 @@ from datetime import datetime
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from io import BytesIO
+from sqlalchemy import func
+from reportlab.pdfgen import canvas
+from flask import send_file
+
+
+
 
 app = Flask(__name__)
+
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///banco.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -118,27 +125,43 @@ def relatorio_vendas():
     } for venda in vendas])
 
 # Gerar balancete
-@app.route('/balancete', methods=['GET'])
-def balancete():
+@app.route('/balancete-pdf')
+def baixar_balancete_pdf():
     data_inicio = request.args.get('data_inicio')
     data_fim = request.args.get('data_fim')
 
+    query = Venda.query
+
     if data_inicio and data_fim:
-        data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d')
-        data_fim = datetime.strptime(data_fim, '%Y-%m-%d')
-        vendas = Venda.query.filter(Venda.data.between(data_inicio, data_fim)).all()
-    else:
-        vendas = Venda.query.all()
+        try:
+            data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d')
+            data_fim = datetime.strptime(data_fim, '%Y-%m-%d')
+            query = query.filter(Venda.data >= data_inicio, Venda.data <= data_fim)
+        except ValueError:
+            return jsonify({'mensagem': 'Formato de data inválido'}), 400
 
-    total_vendas = sum(venda.total for venda in vendas)
-    total_itens_vendidos = sum(venda.quantidade for venda in vendas)
+    vendas = query.all()
+    total_vendas = sum(v.total for v in vendas)
+    total_itens = sum(v.quantidade for v in vendas)
+    num_vendas = len(vendas)
 
-    return jsonify({
-        'total_vendas': total_vendas,
-        'total_itens_vendidos': total_itens_vendidos,
-        'num_vendas': len(vendas)
-    })
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer)
+    pdf.setFont("Helvetica", 12)
 
+    pdf.drawString(100, 800, f"Balancete Financeiro")
+    if data_inicio and data_fim:
+        pdf.drawString(100, 780, f"Período: {data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}")
+
+    pdf.drawString(100, 740, f"Total de Vendas: R$ {total_vendas:.2f}")
+    pdf.drawString(100, 720, f"Total de Itens Vendidos: {total_itens}")
+    pdf.drawString(100, 700, f"Número de Vendas Realizadas: {num_vendas}")
+
+    pdf.showPage()
+    pdf.save()
+    buffer.seek(0)
+
+    return send_file(buffer, as_attachment=True, download_name="balancete.pdf", mimetype='application/pdf')
 
 # Gerar relatório PDF
 @app.route('/relatorio-pdf', methods=['GET'])
@@ -160,6 +183,32 @@ def relatorio_pdf():
     buffer.seek(0)
 
     return Response(buffer, mimetype='application/pdf', headers={"Content-Disposition": "attachment;filename=relatorio.pdf"})
+
+@app.route('/balancete')
+def gerar_balancete():
+    data_inicio = request.args.get('data_inicio')
+    data_fim = request.args.get('data_fim')
+
+    query = Venda.query
+    if data_inicio and data_fim:
+        try:
+            data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d')
+            data_fim = datetime.strptime(data_fim, '%Y-%m-%d')
+            query = query.filter(Venda.data >= data_inicio, Venda.data <= data_fim)
+        except ValueError:
+            return jsonify({'mensagem': 'Formato de data inválido'}), 400
+
+    vendas = query.all()
+    total_vendas = sum(v.total for v in vendas)
+    total_itens = sum(v.quantidade for v in vendas)
+    num_vendas = len(vendas)
+
+    return jsonify({
+        'total_vendas': total_vendas,
+        'total_itens': total_itens,
+        'num_vendas': num_vendas
+    })
+
 
 if __name__ == '__main__':
     app.run(debug=True)

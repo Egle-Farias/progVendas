@@ -1,0 +1,25 @@
+@charset "UFT-8";
+
+*{
+    background-color: rgb(184, 185, 185);
+}
+
+.center{
+    display:flex;
+    flex-wrap: wrap;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 2%;
+}
+
+header{
+    padding: 0 2%;
+}
+
+.logo{
+    width: 50%;
+}
+
+.menu{
+    width: 100%;
+}
