@@ -184,12 +184,13 @@ def relatorio_pdf():
 
     return Response(buffer, mimetype='application/pdf', headers={"Content-Disposition": "attachment;filename=relatorio.pdf"})
 
-@app.route('/balancete')
-def gerar_balancete():
+@app.route('/balancete', methods=['GET'])
+def obter_balancete():
     data_inicio = request.args.get('data_inicio')
     data_fim = request.args.get('data_fim')
 
     query = Venda.query
+
     if data_inicio and data_fim:
         try:
             data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d')
@@ -208,7 +209,6 @@ def gerar_balancete():
         'total_itens': total_itens,
         'num_vendas': num_vendas
     })
-
 
 if __name__ == '__main__':
     app.run(debug=True)

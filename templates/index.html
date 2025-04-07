@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ProgVendas - Sistema de Vendas</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
-    <meta name="viewport" content="width=device-width, initial-scale=1;0, maximum-scale=1,0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 </head>
 <body>
     <header>
@@ -46,9 +46,11 @@
         <label for="end-date">Data Fim:</label>
         <input type="date" id="end-date">
         <button id="generate-financial-report">Gerar Balancete</button>
-        <button id="download-financial-pdf">Baixar Balancete em PDF</button>
-         <!-- Botão para baixar o balancete -->
-        <button onclick="baixarBalancete()">Baixar Balancete</button>
+        <!-- Botão para baixar o balancete -->
+        <button onclick="baixarBalancete()">Baixar Balancete em PDF</button>
+        <button id="generate-report">Gerar Relatório de Vendas</button>
+        <ul id="report-list"></ul>
+
         
         <div id="financial-report"></div>
         
