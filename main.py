@@ -1,13 +1,11 @@
-from flask import Flask, request, jsonify, render_template, Response
+from flask import Flask, request, jsonify, render_template, Response, send_file
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from io import BytesIO
 from sqlalchemy import func
-from reportlab.pdfgen import canvas
-from flask import send_file
-
+import locale
 
 
 
@@ -18,7 +16,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Definição dos modelos do banco
+locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+
+# Modelos
 class Produto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
@@ -98,7 +98,7 @@ def alterar_produto(produto_id):
     db.session.commit()
     return jsonify({"mensagem": "Produto atualizado com sucesso!"}), 200
 
-# Substituir produto
+# Substituir nome do produto
 @app.route('/substituir/<int:produto_id>', methods=['PUT'])
 def substituir_produto(produto_id):
     dados = request.get_json()
@@ -114,7 +114,18 @@ def substituir_produto(produto_id):
     db.session.commit()
     return jsonify({"mensagem": "Produto substituído com sucesso!"}), 200
 
-# Gerar relatório de vendas
+# ✅ EXCLUIR produto
+@app.route('/produto/<int:produto_id>', methods=['DELETE'])
+def excluir_produto(produto_id):
+    produto = Produto.query.get(produto_id)
+    if not produto:
+        return jsonify({"mensagem": "Produto não encontrado."}), 404
+
+    db.session.delete(produto)
+    db.session.commit()
+    return jsonify({"mensagem": "Produto excluído com sucesso!"}), 200
+
+# Relatório de vendas (JSON)
 @app.route('/relatorio-vendas', methods=['GET'])
 def relatorio_vendas():
     vendas = Venda.query.all()
@@ -124,12 +135,11 @@ def relatorio_vendas():
         'total': venda.total
     } for venda in vendas])
 
-# Gerar balancete
+# Balancete PDF
 @app.route('/balancete-pdf')
 def baixar_balancete_pdf():
     data_inicio = request.args.get('data_inicio')
     data_fim = request.args.get('data_fim')
-
     query = Venda.query
 
     if data_inicio and data_fim:
@@ -163,7 +173,7 @@ def baixar_balancete_pdf():
 
     return send_file(buffer, as_attachment=True, download_name="balancete.pdf", mimetype='application/pdf')
 
-# Gerar relatório PDF
+# Relatório PDF (vendas)
 @app.route('/relatorio-pdf', methods=['GET'])
 def relatorio_pdf():
     vendas = Venda.query.all()
@@ -184,12 +194,17 @@ def relatorio_pdf():
 
     return Response(buffer, mimetype='application/pdf', headers={"Content-Disposition": "attachment;filename=relatorio.pdf"})
 
+# Balancete JSON
 @app.route('/balancete', methods=['GET'])
 def obter_balancete():
     data_inicio = request.args.get('data_inicio')
     data_fim = request.args.get('data_fim')
-
     query = Venda.query
+
+    # Dentro da função relatorio_pdf()
+    valor_formatado = locale.currency(total_vendas, grouping=True)
+    pdf.drawString(100, 720, f"Total de Vendas: {valor_formatado}")
+
 
     if data_inicio and data_fim:
         try:
@@ -209,6 +224,12 @@ def obter_balancete():
         'total_itens': total_itens,
         'num_vendas': num_vendas
     })
+
+# Relatório de estoque
+@app.route('/relatorio/estoque')
+def relatorio_estoque():
+    produtos = Produto.query.all()
+    return render_template('relatorio_estoque.html', produtos=produtos)
 
 if __name__ == '__main__':
     app.run(debug=True)
