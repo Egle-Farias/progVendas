@@ -57,6 +57,11 @@ button {
 
 button:hover {
   background-color: #0b5ed7;
+  opacity: 3;
+}
+
+#modal{
+  transform: translate(-20%, -50%);
 }
 
 /* Listas */
